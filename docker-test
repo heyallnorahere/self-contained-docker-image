@@ -1,0 +1,3 @@
+#!/bin/bash
+
+dotnet DockerTest/bin/Debug/net6.0/DockerTest.dll $@
