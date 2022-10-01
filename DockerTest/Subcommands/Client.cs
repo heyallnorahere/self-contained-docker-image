@@ -28,7 +28,7 @@ namespace DockerTest.Subcommands
     [Subcommand]
     internal sealed class Client : ISubcommand
     {
-        private static async Task<EndPoint?> FindEndpointAsync(string host, PortUsage usage)
+        private static async Task<EndPoint?> FindEndpointAsync(string host, int port)
         {
             IPAddress? address;
             if (!IPAddress.TryParse(host, out address))
@@ -42,14 +42,12 @@ namespace DockerTest.Subcommands
                 return null;
             }
 
-            int port = Program.GetHostPort(usage);
             return new IPEndPoint(address, port);
         }
 
-        private static async Task<Socket?> ConnectAsync(string host, PortUsage usage)
+        private static async Task<Socket?> ConnectAsync(string host, int port, ProtocolType protocol)
         {
-            var protocol = Program.GetPortProtocolType(usage);
-            var endpoint = await FindEndpointAsync(host, usage);
+            var endpoint = await FindEndpointAsync(host, port);
 
             if (endpoint == null)
             {
@@ -58,7 +56,10 @@ namespace DockerTest.Subcommands
             }
 
             Console.WriteLine($"Attempting to connect to server: {endpoint}");
-            var socket = new Socket(endpoint.AddressFamily, SocketType.Stream, protocol);
+            var socket = new Socket(endpoint.AddressFamily, SocketType.Stream, protocol)
+            {
+                Blocking = true
+            };
 
             try
             {
@@ -84,7 +85,20 @@ namespace DockerTest.Subcommands
 
         public async Task<int> InvokeAsync(IReadOnlyList<string> args)
         {
-            using var socket = await ConnectAsync("127.0.0.1", PortUsage.HostCommunication);
+            const PortUsage usage = PortUsage.HostCommunication;
+            var protocol = Program.GetPortProtocolType(usage);
+
+            int port;
+            if (args.Contains("--use-internal-port"))
+            {
+                port = Program.GetContainerPort(usage);
+            }
+            else
+            {
+                port = Program.GetHostPort(usage);
+            }
+
+            using var socket = await ConnectAsync("127.0.0.1", port, protocol);
             if (socket == null)
             {
                 Console.Error.WriteLine("Failed to connect to server!");
@@ -98,21 +112,13 @@ namespace DockerTest.Subcommands
             var encoding = Encoding.UTF8;
             using var stream = new NetworkStream(socket, false);
 
-            using var reader = new StreamReader(stream, encoding: encoding, leaveOpen: true);
-            using var writer = new StreamWriter(stream, encoding: encoding, leaveOpen: true);
-
-            socket.Blocking = true;
-
-            var buffer = new char[1024];
+            var buffer = new byte[1024];
             var received = string.Empty;
 
             Task<string?>? stdinReadTask = null;
             Task<int>? socketReadTask = null;
 
-            var shutdown = () => socket.Shutdown(SocketShutdown.Both);
-            ConsoleCancelEventHandler onCtrlC = (sender, args) => shutdown();
-
-            Console.CancelKeyPress += onCtrlC;
+            bool disconnected = false;
             try
             {
                 while (true)
@@ -137,8 +143,9 @@ namespace DockerTest.Subcommands
 
                         if (command.Length > 0)
                         {
-                            await writer.WriteLineAsync(command);
-                            await writer.FlushAsync();
+                            var bytes = encoding.GetBytes($"{command}\n");
+                            await stream.WriteAsync(bytes);
+                            await stream.FlushAsync();
                         }
 
                         restartTask = true;
@@ -169,26 +176,35 @@ namespace DockerTest.Subcommands
 
                         if (numRead > 0)
                         {
-                            Console.Write(buffer[0..numRead]);
-                        }
+                            string data = encoding.GetString(buffer[0..numRead]);
+                            Console.Write(data);
 
-                        restartTask = true;
+                            restartTask = true;
+                        }
+                        else
+                        {
+                            disconnected = true;
+                            break;
+                        }
                     }
 
                     if (restartTask)
                     {
-                        socketReadTask = Task.Run(() => reader.ReadBlock(buffer, 0, buffer.Length));
+                        socketReadTask = Task.Run(async () => await stream.ReadAsync(buffer));
                     }
                 }
             }
             catch (SocketException)
             {
-                // probably disconnected
+                disconnected = true;
             }
 
-            shutdown();
-            Console.CancelKeyPress -= onCtrlC;
-            
+            if (disconnected)
+            {
+                Console.WriteLine("Socket disconnected");
+            }
+
+            socket.Shutdown(SocketShutdown.Both);
             return 0;
         }
     }

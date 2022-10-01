@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "Run server": {
+      "commandName": "Project",
+      "commandLineArgs": "server"
+    },
+    "Run client": {
+      "commandName": "Project",
+      "commandLineArgs": "client"
+    }
+  }
+}

@@ -70,7 +70,7 @@ namespace DockerTest.Subcommands
 
             do
             {
-                int numRead = await dockerfileStream.ReadAsync(dockerfileBytes, totalBytesRead, dockerfileBytes.Length - totalBytesRead);
+                int numRead = await dockerfileStream.ReadAsync(dockerfileBytes);
                 if (numRead <= 0)
                 {
                     break;

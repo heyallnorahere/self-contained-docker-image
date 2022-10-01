@@ -145,13 +145,11 @@ namespace DockerTest
             {
                 VerifyUsable();
 
+                using var stream = new FileStream(realPath, FileMode.Open, FileAccess.Read);
                 var entry = TarEntry.CreateTarEntry(virtualPath);
-                var token = new CancellationToken();
-
-                using var stream = new FileStream(realPath, FileMode.Open);
                 entry.Size = stream.Length;
 
-                await mTarStream.PutNextEntryAsync(entry, token);
+                await mTarStream.PutNextEntryAsync(entry, default);
 
                 var buffer = new byte[1024];
                 while (true)
@@ -162,10 +160,10 @@ namespace DockerTest
                         break;
                     }
 
-                    await mTarStream.WriteAsync(buffer, 0, numRead, token);
+                    await mTarStream.WriteAsync(buffer, 0, numRead, default);
                 }
 
-                await mTarStream.CloseEntryAsync(token);
+                await mTarStream.CloseEntryAsync(default);
             }
 
             public void AddEntry(string virtualPath, byte[] contents)

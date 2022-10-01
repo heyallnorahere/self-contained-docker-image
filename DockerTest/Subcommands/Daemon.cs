@@ -61,7 +61,7 @@ namespace DockerTest.Subcommands
                 {
                     while (true)
                     {
-                        int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                        int bytesRead = await stream.ReadAsync(buffer);
                         if (bytesRead <= 0)
                         {
                             break;
@@ -90,15 +90,23 @@ namespace DockerTest.Subcommands
                         while (commands.Count > 0)
                         {
                             var command = commands.Dequeue();
+                            string message;
+
                             if (command.ToLower() == "stop")
                             {
-                                Console.WriteLine($"Received command \"{command}\" - stopping execution");
+                                message = $"Received command \"{command}\" - stopping execution";
                                 stop = true;
                             }
                             else
                             {
-                                Console.WriteLine($"Received unknown command \"{command}\"");
+                                message = $"Received unknown command \"{command}\"";
                             }
+
+                            var bytes = encoding.GetBytes($"{message}\n");
+                            await stream.WriteAsync(bytes);
+                            await stream.FlushAsync();
+
+                            Console.WriteLine(message);
                         }
 
                         if (stop)
