@@ -157,11 +157,7 @@ namespace DockerTest.Subcommands
                 HostConfig = new HostConfig
                 {
                     PortBindings = portBindings,
-                    AutoRemove = true,
-                    RestartPolicy = new RestartPolicy
-                    {
-                        Name = RestartPolicyKind.UnlessStopped
-                    }
+                    AutoRemove = true
                 }
             });
 
