@@ -27,37 +27,11 @@ namespace DockerTest.Subcommands
     [Subcommand]
     internal sealed class Server : ISubcommand
     {
-        private sealed class ProgressReporter : IProgress<JSONMessage>
-        {
-            public void Report(JSONMessage message)
-            {
-                var type = message.GetType();
-                var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-
-                Console.WriteLine("Got progress report:");
-                foreach (var property in properties)
-                {
-                    string value;
-                    try
-                    {
-                        var propertyValue = property.GetValue(message, BindingFlags.Public | BindingFlags.Instance, null, null, null);
-                        value = propertyValue?.ToString() ?? "null";
-                    }
-                    catch (Exception ex)
-                    {
-                        var exceptionType = ex.GetType();
-                        value = $"{exceptionType.FullName ?? exceptionType.Name}: {ex.Message}";
-                    }
-
-                    Console.WriteLine($"\t{property.Name}: {value}");
-                }
-            }
-        }
-
         private static async Task BuildContextAsync(IContextBuilder contextBuilder)
         {
             var assembly = Assembly.GetExecutingAssembly();
             var assemblyDir = Path.GetDirectoryName(assembly.Location) ?? Directory.GetCurrentDirectory();
+            await Console.Out.WriteLineAsync($"Compressing directory: {assemblyDir}");
 
             using var dockerfileStream = assembly.GetManifestResourceStream("DockerTest.Resources.Dockerfile");
             if (dockerfileStream == null)
@@ -84,10 +58,44 @@ namespace DockerTest.Subcommands
             await contextBuilder.AddEntryAsync("/Dockerfile", dockerfileBytes);
         }
 
+        private static async void ReportMessage(JSONMessage message)
+        {
+            bool wroteOut = false;
+            bool wroteError = false;
+
+            if (message.ProgressMessage != null)
+            {
+                await Console.Out.WriteLineAsync(message.ProgressMessage);
+                wroteOut = true;
+            }
+
+            if (message.ErrorMessage != null)
+            {
+                await Console.Error.WriteLineAsync(message.ErrorMessage);
+                wroteError = true;
+            }
+
+            if (message.Stream != null)
+            {
+                await Console.Out.WriteAsync(message.Stream);
+                wroteOut = true;
+            }
+
+            if (wroteOut)
+            {
+                await Console.Out.FlushAsync();
+            }
+
+            if (wroteError)
+            {
+                await Console.Error.FlushAsync();
+            }
+        }
+
         public async Task<int> InvokeAsync(IReadOnlyList<string> args)
         {
             using var host = new DockerHost();
-            var reporter = new ProgressReporter();
+            var reporter = new Progress<JSONMessage>(ReportMessage);
 
             // login? maybe?
 
@@ -129,7 +137,10 @@ namespace DockerTest.Subcommands
 
             foreach (var match in imageMatches)
             {
-                await host.Client.Images.DeleteImageAsync(imageTag, new ImageDeleteParameters());
+                await host.Client.Images.DeleteImageAsync(imageTag, new ImageDeleteParameters
+                {
+                    Force = true
+                });
             }
 
             var exposedPorts = new Dictionary<string, EmptyStruct>();

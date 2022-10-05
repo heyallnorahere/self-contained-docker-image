@@ -108,7 +108,7 @@ namespace DockerTest
                     var directories = Directory.GetDirectories(realPath);
                     foreach (var directory in directories)
                     {
-                        var name = Path.GetRelativePath(directory, realPath);
+                        var name = Path.GetRelativePath(realPath, directory);
                         var virtualDirectory = Path.Join(virtualPath, name);
 
                         await AddDirectoryAsync(directory, virtualDirectory, true);
